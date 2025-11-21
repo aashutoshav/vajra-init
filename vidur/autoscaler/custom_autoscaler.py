@@ -66,45 +66,47 @@ class CustomAutoscaler(BaseAutoscaler):
         """
         level = self._autoscaler_config.service_level
 
-        # Get the "golden" defaults from CustomAutoscalerConfig
+        # Get the "golden" defaults (T_stab = 960s)
         base_min_window_up = self._autoscaler_config.min_window_size_scale_up
         base_look_back_up = self._autoscaler_config.look_back_time_scale_up
         base_min_window_down = self._autoscaler_config.min_window_size_scale_down
         base_look_back_down = self._autoscaler_config.look_back_time_scale_down
-        base_stabilization = self._autoscaler_config.stabilization_delay
+        base_stabilization = self._autoscaler_config.stabilization_delay # 960s
 
         if level == 1:
-            # Level 1: Low Cost. (Fewer replicas than baseline)
-            # We set utilization > 1.0 to scale up *less*.
-            self.scale_up_utilization = 1.15  # 1 / 1.15 = ~87% of baseline replicas
-            self.scale_down_utilization = 1.1
-            self._min_window_up = base_min_window_up * 1.5     # Slow: Avg over 15s
+            # Level 1: Low Cost. (We save money by scaling down faster)
+            self.scale_up_utilization = 1.0  # Keep scaling target the same
+            self.scale_down_utilization = 1.0
+            
+            # Reduce stabilization time significantly to save cost
+            self._min_window_up = base_min_window_up 
             self._look_back_up = base_look_back_up
-            self._min_window_down = base_min_window_down / 2.0 # Quick: Check ~32s window
-            self._look_back_down = base_look_back_down / 2.0 # Quick: Look back 150s
-            self._stabilization = base_stabilization / 2.0     # Quick: Stabilize for 150s
+            self._min_window_down = base_min_window_down
+            self._look_back_down = base_look_back_down
+            self._stabilization = base_stabilization / 2.0     # 480 seconds (Saves money)
 
         elif level == 2:
-            # Level 2: Balanced (This is our "golden" Inferline policy)
-            # We set utilization = 1.0 to match the Inferline logic exactly.
+            # Level 2: Balanced (Anchor Point, works)
             self.scale_up_utilization = 1.0
             self.scale_down_utilization = 1.0
+            
             self._min_window_up = base_min_window_up
             self._look_back_up = base_look_back_up
             self._min_window_down = base_min_window_down
             self._look_back_down = base_look_back_down
-            self._stabilization = base_stabilization
+            self._stabilization = base_stabilization # 960 seconds
 
         elif level == 3:
-            # Level 3: Low Latency. (More replicas than baseline)
-            # We set utilization < 1.0 to scale up *more*.
-            self.scale_up_utilization = 0.70 # 1 / 0.7 = ~142% of baseline replicas
-            self.scale_down_utilization = 0.60
-            self._min_window_up = base_min_window_up / 2.0     # Quick: React to 5s bursts
+            # Level 3: Low Latency. (We crush latency by provisioning 25% more replicas)
+            self.scale_up_utilization = 0.80  # Provisions 1 / 0.8 = 125% replicas
+            self.scale_down_utilization = 0.70
+            
+            # Keep stabilization at the baseline (or slightly faster) to prevent catastrophic stalls
+            self._min_window_up = base_min_window_up 
             self._look_back_up = base_look_back_up
-            self._min_window_down = base_min_window_down * 1.5 # Slow: Avg over ~100s window
-            self._look_back_down = base_look_back_down * 1.5 # Slow: Look back 450s
-            self._stabilization = base_stabilization * 1.5     # Slow: Stabilize for 450s
+            self._min_window_down = base_min_window_down
+            self._look_back_down = base_look_back_down
+            self._stabilization = base_stabilization * 0.9     # 864 seconds (Prevents stall)
             
     def on_request_arrival(self, request: Request) -> None:
         """

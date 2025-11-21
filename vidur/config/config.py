@@ -711,11 +711,11 @@ class CustomAutoscalerConfig(BaseAutoscalerConfig):
         metadata={"help": "Minimum window size for scale up."},
     )
     min_window_size_scale_down: float = field(
-        default=65,
+        default=120,
         metadata={"help": "Minimum window size for scale down."},
     )
     stabilization_delay: float = field(
-        default=300,
+        default=960,
         metadata={"help": "Stabilization delay."},
     )
     initial_replica_token_throughput: float = field(
