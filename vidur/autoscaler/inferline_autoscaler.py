@@ -56,41 +56,32 @@ class NetworkEnvelope:
         arrivals_list = list(self.arrivals)
         n = len(arrivals_list)
         
-        if n == 0:
-            return 0.0
-        
         max_rate = 0.0
         
         right = 0
-        current_tokens_start = 0.0
+        current_tokens = 0.0
         for left in range(n):
             window_start = arrivals_list[left][0]
             window_end = window_start + window_size
-
             while right < n and arrivals_list[right][0] < window_end:
-                current_tokens_start += arrivals_list[right][1]
+                current_tokens += arrivals_list[right][1]
                 right += 1
-            
             if window_start >= start_time and window_end <= time:
-                current_rate = current_tokens_start / window_size
+                current_rate = current_tokens / window_size
                 max_rate = max(max_rate, current_rate)
-            
-            current_tokens_start -= arrivals_list[left][1]
+            current_tokens -= arrivals_list[left][1]
 
         left = 0
-        current_tokens_end = 0.0
+        current_tokens = 0.0
         for right in range(n):
             window_end = arrivals_list[right][0]
             window_start = window_end - window_size
-            
-            current_tokens_end += arrivals_list[right][1]
-            
+            current_tokens += arrivals_list[right][1]
             while left < right and arrivals_list[left][0] <= window_start:
-                current_tokens_end -= arrivals_list[left][1]
+                current_tokens -= arrivals_list[left][1]
                 left += 1
-
             if window_start >= start_time and window_end <= time:
-                current_rate = current_tokens_end / window_size
+                current_rate = current_tokens / window_size
                 max_rate = max(max_rate, current_rate)
         
         return max_rate
@@ -142,7 +133,6 @@ class InferlineAutoscaler(BaseAutoscaler):
     
     def tune(self, time: float) -> int:
         """
-        Inferline based autoscaler tuning.
         Args:
         - time: Current time
         Returns:
@@ -150,11 +140,6 @@ class InferlineAutoscaler(BaseAutoscaler):
             +ve value indicates scale up
             -ve value indicates scale down
             0 indicates no change
-
-        HINTS:
-        1. The autoscaler config field stabilization_delay is the time to wait before scaling down after the last scale up.
-        2. Check for scale up first, then scale down.
-        3. self._num_pending_scale_ups and self._num_pending_scale_downs are the number of pending scale ups and scale downs respectively. Make sure to account for these.
         """
         effective_replicas = (
             self.num_replicas 
@@ -172,7 +157,7 @@ class InferlineAutoscaler(BaseAutoscaler):
             target_replicas_up = math.ceil(max_arrival_rate_up / self._replica_token_throughput)
         else:
             target_replicas_up = 0
-        
+
         scale_up_delta = target_replicas_up - effective_replicas
         
         if scale_up_delta > 0:
@@ -199,10 +184,9 @@ class InferlineAutoscaler(BaseAutoscaler):
         if scale_down_delta > 0:
             if (effective_replicas - scale_down_delta) < self._autoscaler_config.min_replicas:
                 scale_down_delta = effective_replicas - self._autoscaler_config.min_replicas
-                if scale_down_delta <= 0:
-                    return 0
-
-            self._num_pending_scale_downs += scale_down_delta
-            return -scale_down_delta
+                
+            if scale_down_delta > 0:
+                self._num_pending_scale_downs += scale_down_delta
+                return -scale_down_delta
 
         return 0

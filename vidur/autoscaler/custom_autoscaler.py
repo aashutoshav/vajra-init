@@ -55,58 +55,30 @@ class CustomAutoscaler(BaseAutoscaler):
         )
         self._network_envelope = NetworkEnvelope(envelope_config)
 
-
     def init_service_level(self) -> None:
         """
         Initialize the service level of the autoscaler
-        The autoscaler config contains the field service_level that can be set to 1, 2, or 3
-        Set up the required state based on the service level
-        
-        HINT: As an example, when using the InferlineAutoscaler, you can play around with min window sizes and look back times for different service levels
+        Strategy: Aggressive spread based on "Stingy" baseline
         """
         level = self._autoscaler_config.service_level
 
-        # Get the "golden" defaults (T_stab = 960s)
-        base_min_window_up = self._autoscaler_config.min_window_size_scale_up
-        base_look_back_up = self._autoscaler_config.look_back_time_scale_up
-        base_min_window_down = self._autoscaler_config.min_window_size_scale_down
-        base_look_back_down = self._autoscaler_config.look_back_time_scale_down
-        base_stabilization = self._autoscaler_config.stabilization_delay # 960s
+        self._min_window_up = self._autoscaler_config.min_window_size_scale_up
+        self._look_back_up = self._autoscaler_config.look_back_time_scale_up
+        self._min_window_down = self._autoscaler_config.min_window_size_scale_down
+        self._look_back_down = self._autoscaler_config.look_back_time_scale_down
+        self._stabilization = self._autoscaler_config.stabilization_delay
 
         if level == 1:
-            # Level 1: Low Cost. (We save money by scaling down faster)
-            self.scale_up_utilization = 1.0  # Keep scaling target the same
-            self.scale_down_utilization = 1.0
-            
-            # Reduce stabilization time significantly to save cost
-            self._min_window_up = base_min_window_up 
-            self._look_back_up = base_look_back_up
-            self._min_window_down = base_min_window_down
-            self._look_back_down = base_look_back_down
-            self._stabilization = base_stabilization / 2.0     # 480 seconds (Saves money)
+            self.scale_up_utilization = 1.2
+            self.scale_down_utilization = 1.1
 
         elif level == 2:
-            # Level 2: Balanced (Anchor Point, works)
             self.scale_up_utilization = 1.0
             self.scale_down_utilization = 1.0
-            
-            self._min_window_up = base_min_window_up
-            self._look_back_up = base_look_back_up
-            self._min_window_down = base_min_window_down
-            self._look_back_down = base_look_back_down
-            self._stabilization = base_stabilization # 960 seconds
 
         elif level == 3:
-            # Level 3: Low Latency. (We crush latency by provisioning 25% more replicas)
-            self.scale_up_utilization = 0.80  # Provisions 1 / 0.8 = 125% replicas
-            self.scale_down_utilization = 0.70
-            
-            # Keep stabilization at the baseline (or slightly faster) to prevent catastrophic stalls
-            self._min_window_up = base_min_window_up 
-            self._look_back_up = base_look_back_up
-            self._min_window_down = base_min_window_down
-            self._look_back_down = base_look_back_down
-            self._stabilization = base_stabilization * 0.9     # 864 seconds (Prevents stall)
+            self.scale_up_utilization = 0.7
+            self.scale_down_utilization = 0.6
             
     def on_request_arrival(self, request: Request) -> None:
         """
@@ -148,19 +120,20 @@ class CustomAutoscaler(BaseAutoscaler):
             self._look_back_up   
         )
         
+        target_replicas_up = 0
         if self._replica_token_throughput > 0:
             raw_target_replicas = max_arrival_rate_up / self._replica_token_throughput
             target_replicas_up = math.ceil(raw_target_replicas / self.scale_up_utilization)
-        else:
-            target_replicas_up = 0
+        
+        target_replicas_up = max(target_replicas_up, self._autoscaler_config.min_replicas)
 
         scale_up_delta = target_replicas_up - effective_replicas
         
         if scale_up_delta > 0:
             self._last_scale_up_time = time
             self._num_pending_scale_ups += scale_up_delta
-            return scale_up_delta
-        
+            return scale_up_delta 
+
         if (time - self._last_scale_up_time) < self._stabilization: 
             return 0 
 
@@ -170,20 +143,16 @@ class CustomAutoscaler(BaseAutoscaler):
             self._look_back_down   
         )
         
+        target_replicas_down = 0
         if self._replica_token_throughput > 0:
             raw_target_replicas = max_arrival_rate_down / self._replica_token_throughput
             target_replicas_down = math.ceil(raw_target_replicas / self.scale_down_utilization)
-        else:
-            target_replicas_down = 0
             
+        target_replicas_down = max(target_replicas_down, self._autoscaler_config.min_replicas)
+
         scale_down_delta = effective_replicas - target_replicas_down
         
         if scale_down_delta > 0:
-            if (effective_replicas - scale_down_delta) < self._autoscaler_config.min_replicas:
-                scale_down_delta = effective_replicas - self._autoscaler_config.min_replicas
-                if scale_down_delta <= 0:
-                    return 0
-
             self._num_pending_scale_downs += scale_down_delta
             return -scale_down_delta
 

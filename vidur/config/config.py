@@ -643,10 +643,7 @@ class BaseAutoscalerConfig(BasePolyConfig):
         default=1,
         metadata={"help": "service level."},
     )
-    min_replicas: int = field(
-        default=1,
-        metadata={"help": "Minimum number of replicas."},
-    )
+
 
 @dataclass
 class AutoscalerConfig(BaseAutoscalerConfig):
@@ -654,78 +651,54 @@ class AutoscalerConfig(BaseAutoscalerConfig):
     def get_type():
         return AutoscalerType.DISABLED
 
+
 @dataclass
 class InferlineAutoscalerConfig(BaseAutoscalerConfig):
     """
     Inferline autoscaler configuration.
-    
+
     Tune the fields below for Part 2, Task 5
     """
 
     look_back_time_scale_up: float = field(
-        default=60,
+        default=80,
         metadata={"help": "Look back time for scale up."},
     )
     look_back_time_scale_down: float = field(
-        default=300,
+        default=80,
         metadata={"help": "Look back time for scale down."},
     )
     min_window_size_scale_up: float = field(
-        default=10,
+        default=20,
         metadata={"help": "Minimum window size for scale up."},
     )
     min_window_size_scale_down: float = field(
-        default=120,
+        default=20,
         metadata={"help": "Minimum window size for scale down."},
     )
     stabilization_delay: float = field(
-        default=960,
+        default=10,
         metadata={"help": "Stabilization delay."},
     )
     initial_replica_token_throughput: float = field(
-        default=20000,
+        default=1,
         metadata={"help": "Initial replica token throughput."},
     )
     throughput_alpha: float = field(
         default=0.5,
-        metadata={"help": "Expontential moving average alpha for replica token throughput."},
+        metadata={
+            "help": "Expontential moving average alpha for replica token throughput."
+        },
     )
 
     @staticmethod
     def get_type():
         return AutoscalerType.INFERLINE
 
+
 @dataclass
-class CustomAutoscalerConfig(BaseAutoscalerConfig):
+class CustomAutoscalerConfig(InferlineAutoscalerConfig):
     """Custom autoscaler configuration."""
-    look_back_time_scale_up: float = field(
-        default=60,
-        metadata={"help": "Look back time for scale up."},
-    )
-    look_back_time_scale_down: float = field(
-        default=300,
-        metadata={"help": "Look back time for scale down."},
-    )
-    min_window_size_scale_up: float = field(
-        default=10,
-        metadata={"help": "Minimum window size for scale up."},
-    )
-    min_window_size_scale_down: float = field(
-        default=120,
-        metadata={"help": "Minimum window size for scale down."},
-    )
-    stabilization_delay: float = field(
-        default=960,
-        metadata={"help": "Stabilization delay."},
-    )
-    initial_replica_token_throughput: float = field(
-        default=20000,
-        metadata={"help": "Initial replica token throughput."},
-    )
-    throughput_alpha: float = field(
-        default=0.5,
-        metadata={"help": "Exponential moving average alpha for replica token throughput."},
-    )
 
     @staticmethod
     def get_type():
